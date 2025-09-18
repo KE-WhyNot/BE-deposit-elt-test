@@ -83,7 +83,7 @@ create extension if not exists pgcrypto;
 
 create schema if not exists raw;
 
-create table if not exists raw.deposit_pages (
+create table if not exists raw.finproduct_pages (
     ingest_id       uuid primary key default gen_random_uuid(),
     ingested_at     timestamptz not null default now(),
     now_page_no     int not null,
@@ -194,7 +194,7 @@ def ingest_one(engine: Engine, base_url: str, top_fin_grp_no: str, label: str | 
                 # RAW 데이터 저장 (기존 INSERT 그대로 유지)
                 sql = text(
                     """
-                    insert into raw.deposit_pages
+                    insert into raw.finproduct_pages
                     (now_page_no, max_page_no, base_url, query_params, http_status, payload)
                     values
                     (:now_page_no, :max_page_no, :base_url, :query_params, :http_status, :payload)
