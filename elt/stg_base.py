@@ -165,7 +165,8 @@ def process_one_type(engine: Engine, key: str) -> tuple[int, int]:
 
     # 읽기 전용 커넥션 (서버사이드 스트리밍)
     with engine.connect().execution_options(stream_results=True) as rconn:
-        res = rconn.execute(text(f"SELECT payload FROM {raw_table}"))
+        res = rconn.execute(text(
+            f"SELECT payload FROM {raw_table} WHERE product_type = :pt"), {"pt": product_type})
         row_iter = res.mappings()  # {'payload': {...}}
 
         # 쓰기 커넥션 분리 (배치 커밋)
