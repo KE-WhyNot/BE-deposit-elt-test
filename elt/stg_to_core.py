@@ -46,7 +46,6 @@ BOOTSTRAP_SQL = """
 CREATE SCHEMA IF NOT EXISTS core;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- product
 CREATE TABLE IF NOT EXISTS core.product (
   id              BIGSERIAL PRIMARY KEY,
   product_type    TEXT NOT NULL CHECK (product_type IN ('DEPOSIT','SAVING')),
@@ -55,18 +54,18 @@ CREATE TABLE IF NOT EXISTS core.product (
   payload         JSONB NOT NULL,
   content_hash    TEXT  NOT NULL,
 
-  -- 조회 보조 생성 컬럼
+  -- 기본 생성 컬럼
   dcls_month      TEXT GENERATED ALWAYS AS ((payload->>'dcls_month')) STORED,
   fin_prdt_nm     TEXT GENERATED ALWAYS AS ((payload->>'fin_prdt_nm')) STORED,
   fin_co_no       TEXT GENERATED ALWAYS AS ((payload->>'fin_co_no')) STORED,
   kor_co_nm       TEXT GENERATED ALWAYS AS ((payload->>'kor_co_nm')) STORED,
 
   -- SCD2
-  is_current      BOOLEAN    NOT NULL DEFAULT TRUE,
+  is_current      BOOLEAN     NOT NULL DEFAULT TRUE,
   valid_from_ts   TIMESTAMPTZ NOT NULL DEFAULT now(),
   valid_to_ts     TIMESTAMPTZ NULL,
 
-  -- 옵션 세트 서명
+  -- 옵션 세트
   options_set_hash TEXT NULL,
   options_count    INT  NULL,
 
@@ -74,22 +73,43 @@ CREATE TABLE IF NOT EXISTS core.product (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 동일 외부키 현재본 1건 보장
+-- 멱등: 부족한 생성 컬럼 보강
+ALTER TABLE core.product
+  ADD COLUMN IF NOT EXISTS fin_prdt_cd     TEXT    GENERATED ALWAYS AS ((payload->>'fin_prdt_cd')) STORED,
+  ADD COLUMN IF NOT EXISTS join_way        TEXT    GENERATED ALWAYS AS ((payload->>'join_way')) STORED,
+  ADD COLUMN IF NOT EXISTS mtrt_int        TEXT    GENERATED ALWAYS AS ((payload->>'mtrt_int')) STORED,
+  ADD COLUMN IF NOT EXISTS spcl_cnd        TEXT    GENERATED ALWAYS AS ((payload->>'spcl_cnd')) STORED,
+  ADD COLUMN IF NOT EXISTS join_deny       TEXT    GENERATED ALWAYS AS ((payload->>'join_deny')) STORED,
+  ADD COLUMN IF NOT EXISTS join_member     TEXT    GENERATED ALWAYS AS ((payload->>'join_member')) STORED,
+  ADD COLUMN IF NOT EXISTS etc_note        TEXT    GENERATED ALWAYS AS ((payload->>'etc_note')) STORED,
+  ADD COLUMN IF NOT EXISTS max_limit       NUMERIC GENERATED ALWAYS AS (NULLIF(payload->>'max_limit','')::numeric) STORED,
+  ADD COLUMN IF NOT EXISTS dcls_strt_day   TEXT    GENERATED ALWAYS AS ((payload->>'dcls_strt_day')) STORED,
+  ADD COLUMN IF NOT EXISTS dcls_end_day    TEXT    GENERATED ALWAYS AS ((payload->>'dcls_end_day')) STORED,
+  ADD COLUMN IF NOT EXISTS fin_co_subm_day TEXT    GENERATED ALWAYS AS ((payload->>'fin_co_subm_day')) STORED;
+
+-- 유니크/조회 인덱스
 CREATE UNIQUE INDEX IF NOT EXISTS uq_product_current
   ON core.product(ext_source, ext_id) WHERE is_current;
 CREATE INDEX IF NOT EXISTS idx_product_lookup
   ON core.product(ext_source, ext_id, is_current);
 CREATE INDEX IF NOT EXISTS idx_product_dcls_month
   ON core.product(dcls_month) WHERE is_current;
+CREATE INDEX IF NOT EXISTS idx_product_fin_prdt_cd
+  ON core.product(fin_prdt_cd) WHERE is_current;
+CREATE INDEX IF NOT EXISTS idx_product_fin_co_no
+  ON core.product(fin_co_no) WHERE is_current;
+CREATE INDEX IF NOT EXISTS idx_product_kor_co_nm
+  ON core.product(kor_co_nm) WHERE is_current;
+CREATE INDEX IF NOT EXISTS idx_product_fin_prdt_nm
+  ON core.product(fin_prdt_nm) WHERE is_current;
 
--- option
+-- option 테이블(동일)
 CREATE TABLE IF NOT EXISTS core.product_option (
   id                BIGSERIAL PRIMARY KEY,
   product_id        BIGINT NOT NULL REFERENCES core.product(id) ON DELETE CASCADE,
   payload           JSONB  NOT NULL,
   content_hash      TEXT   NOT NULL,
 
-  -- 조회/정렬 생성 컬럼
   dcls_month        TEXT    GENERATED ALWAYS AS ((payload->>'dcls_month')) STORED,
   save_trm          INTEGER GENERATED ALWAYS AS (NULLIF(payload->>'save_trm','')::int) STORED,
   intr_rate_type    TEXT    GENERATED ALWAYS AS ((payload->>'intr_rate_type')) STORED,
@@ -99,8 +119,7 @@ CREATE TABLE IF NOT EXISTS core.product_option (
   rsrv_type         TEXT    GENERATED ALWAYS AS ((payload->>'rsrv_type')) STORED,
   rsrv_type_nm      TEXT    GENERATED ALWAYS AS ((payload->>'rsrv_type_nm')) STORED,
 
-  -- SCD2
-  is_current        BOOLEAN    NOT NULL DEFAULT TRUE,
+  is_current        BOOLEAN     NOT NULL DEFAULT TRUE,
   valid_from_ts     TIMESTAMPTZ NOT NULL DEFAULT now(),
   valid_to_ts       TIMESTAMPTZ NULL,
 
@@ -108,7 +127,6 @@ CREATE TABLE IF NOT EXISTS core.product_option (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 동일 옵션키 현재본 1건 보장
 CREATE UNIQUE INDEX IF NOT EXISTS uq_option_current
   ON core.product_option(product_id,
                           COALESCE(save_trm,-1),
